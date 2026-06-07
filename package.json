@@ -1,0 +1,13 @@
+{
+  "name": "simple-mcp-client",
+  "version": "1.0.0",
+  "description": "Simple MCP client for Xiaozhi AI",
+  "main": "mcp-client.js",
+  "scripts": {
+    "start": "node mcp-client.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "axios": "^1.6.0"
+  }
+}
