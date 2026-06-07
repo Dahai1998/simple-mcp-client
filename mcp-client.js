@@ -1,28 +1,13 @@
 const WebSocket = require('ws');
 const axios = require('axios');
-const http = require('http');
 
-// 您的 MCP 接入点和 SSE 地址
+// 您的 MCP 接入点
 const WS_URL = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgwODA4MTA3LCJleHAiOjE4MTIzNjU3MDd9.pukOrYTd3n4M1Wmmf_C4UPiPBDqT93Sz9auU7yqDgqHOBu5hH1OMLAGPLBUkdQyLHEKKGZlHsZsLFXNUKG83LQ';
+// 您的 SSE 服务地址
 const SSE_URL = 'https://mcp-proxy-production-a5db.up.railway.app/mcp';
 
 let ws = null;
 let reconnectTimer = null;
-
-// 创建 HTTP 服务器（用于健康检查，满足 Render 要求）
-const PORT = process.env.PORT || 8080;
-const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-});
-server.listen(PORT, () => {
-  console.log(`Health check server listening on port ${PORT}`);
-});
 
 function connect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -30,6 +15,7 @@ function connect() {
 
   ws.on('open', () => {
     console.log('Connected to Xiaozhi MCP endpoint');
+    // 发送 initialize 请求
     ws.send(JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -51,16 +37,42 @@ function connect() {
     }
     console.log('Received from endpoint:', JSON.stringify(msg, null, 2));
 
-    if (msg.method === 'tools/call') {
+    // 处理 tools/list
+    if (msg.method === 'tools/list') {
+      const toolList = {
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          tools: [{
+            name: 'my_search_music',
+            description: '搜索网易云音乐歌曲',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                song_name: { type: 'string', description: '歌曲名称' },
+                author_name: { type: 'string', description: '歌手名称' }
+              },
+              required: []
+            }
+          }]
+        }
+      };
+      console.log('Sending tools/list response:', JSON.stringify(toolList));
+      ws.send(JSON.stringify(toolList));
+    }
+    // 处理 tools/call
+    else if (msg.method === 'tools/call') {
       const { id, params } = msg;
       const toolName = params.name;
-      let argumentsObj = params.arguments || {};
+      const argumentsObj = params.arguments || {};
 
-      if (toolName === 'search_music') {
+      if (toolName === 'my_search_music') {
+        // 将参数转换为 SSE 服务需要的格式
         let keyword = '';
         if (argumentsObj.song_name) keyword = argumentsObj.song_name;
         else if (argumentsObj.author_name) keyword = argumentsObj.author_name;
         else if (argumentsObj.keyword) keyword = argumentsObj.keyword;
+        
         if (!keyword) {
           ws.send(JSON.stringify({
             jsonrpc: '2.0',
@@ -84,6 +96,7 @@ function connect() {
             headers: { 'Content-Type': 'application/json' },
             timeout: 10000
           });
+          console.log('SSE response:', JSON.stringify(response.data, null, 2));
           ws.send(JSON.stringify(response.data));
         } catch (err) {
           console.error('Error calling SSE service:', err.message);
@@ -93,14 +106,6 @@ function connect() {
             error: { code: -32000, message: 'SSE service error: ' + err.message }
           }));
         }
-      } else if (toolName === 'play_music') {
-        ws.send(JSON.stringify({
-          jsonrpc: '2.0',
-          id: id,
-          result: {
-            content: [{ type: 'text', text: '请先搜索歌曲，然后告诉我具体要播放哪一首。' }]
-          }
-        }));
       } else {
         ws.send(JSON.stringify({
           jsonrpc: '2.0',
@@ -108,38 +113,24 @@ function connect() {
           error: { code: -32601, message: `Tool ${toolName} not found` }
         }));
       }
-    } else if (msg.method === 'tools/list') {
-      const toolList = {
-        jsonrpc: '2.0',
-        id: msg.id,
-        result: {
-          tools: [{
-            name: 'search_music',
-            description: '搜索网易云音乐歌曲',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                song_name: { type: 'string', description: '歌曲名称' },
-                author_name: { type: 'string', description: '歌手名称' }
-              }
-            }
-          }]
-        }
-      };
-      ws.send(JSON.stringify(toolList));
-    } else if (msg.method === 'initialize') {
+    }
+    // 处理 initialize 响应
+    else if (msg.method === 'initialize') {
       ws.send(JSON.stringify({
         jsonrpc: '2.0',
         id: msg.id,
         result: {
           protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
+          capabilities: { tools: { listChanged: true } },
           serverInfo: { name: 'simple-mcp-proxy', version: '1.0.0' }
         }
       }));
-    } else if (msg.method === 'ping') {
-      // 忽略
-    } else {
+    }
+    // 忽略 ping / notifications
+    else if (msg.method === 'ping' || msg.method === 'notifications/initialized') {
+      // 不回复或忽略
+    }
+    else {
       console.log('Unhandled method:', msg.method);
     }
   });
