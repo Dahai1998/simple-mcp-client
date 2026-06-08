@@ -6,13 +6,20 @@ const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cC
 
 let ws;
 let reconnectTimer;
+let heartbeatInterval;
 
 function connect() {
+  // 清除旧的心跳定时器
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
   ws = new WebSocket(MCP_ENDPOINT);
 
   ws.on('open', () => {
     console.log('已连接到小智 MCP 服务');
-    setInterval(() => {
+    // 每30秒发送一次心跳包
+    heartbeatInterval = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.ping();
         console.log('💓 发送心跳包');
@@ -28,11 +35,15 @@ function connect() {
       // 1. 处理初始化
       if (message.method === 'initialize') {
         sendResponse({
-          id: message.id, jsonrpc: '2.0',
+          id: message.id,
+          jsonrpc: '2.0',
           result: {
             protocolVersion: '2024-11-05',
             capabilities: {},
-            serverInfo: { name: 'netease-music-server', version: '1.0.0' }
+            serverInfo: {
+              name: 'netease-music-server',
+              version: '1.0.0'
+            }
           }
         });
       }
@@ -40,7 +51,8 @@ function connect() {
       // 2. 处理工具列表请求
       else if (message.method === 'tools/list') {
         sendResponse({
-          id: message.id, jsonrpc: '2.0',
+          id: message.id,
+          jsonrpc: '2.0',
           result: {
             tools: [
               {
@@ -62,7 +74,7 @@ function connect() {
         });
       }
 
-      // 3. 处理工具调用 - 只处理 my_search_music
+      // 3. 处理工具调用
       else if (message.method === 'tools/call') {
         const { id, params } = message;
         const toolName = params.name;
@@ -74,7 +86,8 @@ function connect() {
             const keyword = args.keyword || args.song_name || '';
             if (!keyword) {
               sendResponse({
-                id, jsonrpc: '2.0',
+                id: id,
+                jsonrpc: '2.0',
                 result: {
                   content: [{ type: 'text', text: '错误：请提供歌曲名或歌手名' }]
                 }
@@ -100,7 +113,8 @@ function connect() {
             }
 
             sendResponse({
-              id, jsonrpc: '2.0',
+              id: id,
+              jsonrpc: '2.0',
               result: {
                 content: [{ type: 'text', text: resultText }]
               }
@@ -109,7 +123,8 @@ function connect() {
           } catch (err) {
             console.error('❌ 请求失败:', err.message);
             sendResponse({
-              id, jsonrpc: '2.0',
+              id: id,
+              jsonrpc: '2.0',
               result: {
                 content: [{ type: 'text', text: '音乐服务暂时不可用，请稍后再试' }]
               }
@@ -117,7 +132,8 @@ function connect() {
           }
         } else {
           sendResponse({
-            id, jsonrpc: '2.0',
+            id: id,
+            jsonrpc: '2.0',
             error: { code: -32601, message: `Unknown tool: ${toolName}` }
           });
         }
@@ -130,6 +146,9 @@ function connect() {
 
   ws.on('close', () => {
     console.log('连接已断开，5秒后重连...');
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(connect, 5000);
   });
