@@ -13,6 +13,14 @@ function connect() {
 
   ws.on('open', () => {
     console.log('已连接到小智 MCP 服务');
+
+    // 每30秒发送一次心跳包，保持连接活跃
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+        console.log('💓 发送心跳包');
+      }
+    }, 30000);
   });
 
   ws.on('message', async (data) => {
