@@ -1,154 +1,157 @@
-const WebSocket = require('ws');
-const axios = require('axios');
+import WebSocket from 'ws';
+import fetch from 'node-fetch';
 
-// 您的 MCP 接入点
-const WS_URL = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgwODA4MTA3LCJleHAiOjE4MTIzNjU3MDd9.pukOrYTd3n4M1Wmmf_C4UPiPBDqT93Sz9auU7yqDgqHOBu5hH1OMLAGPLBUkdQyLHEKKGZlHsZsLFXNUKG83LQ';
-// 您的 SSE 服务地址
-const SSE_URL = 'https://mcp-proxy-production-a5db.up.railway.app/mcp';
+// ================== 配置区 ==================
+// 1. 你的网易云音乐 API 地址 (已在 Railway 上部署好的)
+const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
 
-let ws = null;
-let reconnectTimer = null;
+// 2. 从小智后台获取的 MCP 接入点 (已填入你的Token)
+const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgwOTI4MzIzLCJleHAiOjE4MTI0ODU5MjN9.W87P41S1tMy8VPDyUB3FsnUBxMvhJq7UqtCBnBIFaDSqYwL7LbxuqyzxqwjTBHYMwBIDzCaCCv9y5n7EbAWVuA';
+// ===========================================
+
+let ws;
+let reconnectTimer;
 
 function connect() {
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocket(MCP_ENDPOINT);
 
   ws.on('open', () => {
-    console.log('Connected to Xiaozhi MCP endpoint');
-    // 发送 initialize 请求
-    ws.send(JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2024-11-05',
-        capabilities: {}
-      }
-    }));
+    console.log('已连接到小智 MCP 服务');
   });
 
   ws.on('message', async (data) => {
-    let msg;
     try {
-      msg = JSON.parse(data);
-    } catch (e) {
-      console.error('Invalid JSON:', data);
-      return;
-    }
-    console.log('Received from endpoint:', JSON.stringify(msg, null, 2));
+      const message = JSON.parse(data.toString());
+      console.log('收到消息:', JSON.stringify(message).substring(0, 200) + '...');
 
-    // 处理 tools/list
-    if (msg.method === 'tools/list') {
-      const toolList = {
-        jsonrpc: '2.0',
-        id: msg.id,
-        result: {
-          tools: [{
-            name: 'my_search_music',
-            description: '搜索网易云音乐歌曲',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                song_name: { type: 'string', description: '歌曲名称' },
-                author_name: { type: 'string', description: '歌手名称' }
-              },
-              required: []
-            }
-          }]
-        }
-      };
-      console.log('Sending tools/list response:', JSON.stringify(toolList));
-      ws.send(JSON.stringify(toolList));
-    }
-    // 处理 tools/call
-    else if (msg.method === 'tools/call') {
-      const { id, params } = msg;
-      const toolName = params.name;
-      const argumentsObj = params.arguments || {};
-
-      if (toolName === 'my_search_music') {
-        // 将参数转换为 SSE 服务需要的格式
-        let keyword = '';
-        if (argumentsObj.song_name) keyword = argumentsObj.song_name;
-        else if (argumentsObj.author_name) keyword = argumentsObj.author_name;
-        else if (argumentsObj.keyword) keyword = argumentsObj.keyword;
-        
-        if (!keyword) {
-          ws.send(JSON.stringify({
-            jsonrpc: '2.0',
-            id: id,
-            error: { code: -32602, message: 'Missing search keyword' }
-          }));
-          return;
-        }
-        const convertedArgs = { keywords: keyword };
-        console.log(`Calling SSE with converted args:`, convertedArgs);
-        try {
-          const response = await axios.post(SSE_URL, {
-            jsonrpc: '2.0',
-            id: id,
-            method: 'tools/call',
-            params: {
-              name: 'search_music',
-              arguments: convertedArgs
-            }
-          }, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 10000
-          });
-          console.log('SSE response:', JSON.stringify(response.data, null, 2));
-          ws.send(JSON.stringify(response.data));
-        } catch (err) {
-          console.error('Error calling SSE service:', err.message);
-          ws.send(JSON.stringify({
-            jsonrpc: '2.0',
-            id: id,
-            error: { code: -32000, message: 'SSE service error: ' + err.message }
-          }));
-        }
-      } else {
-        ws.send(JSON.stringify({
+      // 1. 处理初始化
+      if (message.method === 'initialize') {
+        sendResponse({
+          id: message.id,
           jsonrpc: '2.0',
-          id: id,
-          error: { code: -32601, message: `Tool ${toolName} not found` }
-        }));
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            serverInfo: {
+              name: 'netease-music-server',
+              version: '1.0.0'
+            }
+          }
+        });
       }
-    }
-    // 处理 initialize 响应
-    else if (msg.method === 'initialize') {
-      ws.send(JSON.stringify({
-        jsonrpc: '2.0',
-        id: msg.id,
-        result: {
-          protocolVersion: '2024-11-05',
-          capabilities: { tools: { listChanged: true } },
-          serverInfo: { name: 'simple-mcp-proxy', version: '1.0.0' }
-        }
-      }));
-    }
-    // 忽略 ping / notifications
-    else if (msg.method === 'ping' || msg.method === 'notifications/initialized') {
-      // 不回复或忽略
-    }
-    else {
-      console.log('Unhandled method:', msg.method);
-    }
-  });
 
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
+      // 2. 处理工具列表请求
+      else if (message.method === 'tools/list') {
+        sendResponse({
+          id: message.id,
+          jsonrpc: '2.0',
+          result: {
+            tools: [{
+              name: 'my_search_music',
+              description: '搜索网易云音乐真实歌曲，返回可播放的歌曲列表',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  keyword: {
+                    type: 'string',
+                    description: '搜索关键词，可以是歌名或歌手名'
+                  }
+                },
+                required: ['keyword']
+              }
+            }]
+          }
+        });
+      }
+
+      // 3. 处理工具调用 (最关键的部分!)
+      else if (message.method === 'tools/call') {
+        const { id, params } = message;
+        const toolName = params.name;
+        const args = params.arguments;
+
+        console.log(`🔧 调用工具: ${toolName}`, args);
+
+        if (toolName === 'my_search_music') {
+          try {
+            // 获取搜索关键词
+            const keyword = args.keyword || args.song_name || '';
+            if (!keyword) {
+              sendResponse({
+                id, jsonrpc: '2.0',
+                result: {
+                  content: [{ type: 'text', text: '错误：请提供歌曲名或歌手名' }]
+                }
+              });
+              return;
+            }
+
+            // 调用你的网易云 API
+            console.log(`🎵 搜索: ${keyword}`);
+            const apiUrl = `${NETEASE_API_BASE}/search?keywords=${encodeURIComponent(keyword)}`;
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+
+            // 提取歌曲信息
+            let resultText = '';
+            if (data.result && data.result.songs && data.result.songs.length > 0) {
+              const songs = data.result.songs.slice(0, 5).map((song, index) => {
+                const name = song.name;
+                const artists = song.artists.map(a => a.name).join('/');
+                return `${index + 1}. ${name} - ${artists}`;
+              }).join('\n');
+              resultText = `🔍 搜索 "${keyword}" 的结果：\n${songs}\n\n你可以说“播放第X首”来选择歌曲`;
+            } else {
+              resultText = `没有找到与 "${keyword}" 相关的歌曲`;
+            }
+
+            sendResponse({
+              id, jsonrpc: '2.0',
+              result: {
+                content: [{ type: 'text', text: resultText }]
+              }
+            });
+            console.log('✅ 工具调用完成');
+          } catch (err) {
+            console.error('❌ 搜索失败:', err.message);
+            sendResponse({
+              id, jsonrpc: '2.0',
+              result: {
+                content: [{ type: 'text', text: '搜索音乐时出错，请稍后再试' }]
+              }
+            });
+          }
+        } else {
+          // 未知工具
+          sendResponse({
+            id, jsonrpc: '2.0',
+            error: { code: -32601, message: `Unknown tool: ${toolName}` }
+          });
+        }
+      }
+
+    } catch (err) {
+      console.error('处理消息出错:', err.message);
+    }
   });
 
   ws.on('close', () => {
-    console.log('Disconnected, reconnecting in 5 seconds...');
+    console.log('连接已断开，5秒后重连...');
+    clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(connect, 5000);
+  });
+
+  ws.on('error', (err) => {
+    console.error('WebSocket 错误:', err.message);
   });
 }
 
-connect();
+function sendResponse(response) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(response));
+  }
+}
 
-process.on('SIGINT', () => {
-  if (ws) ws.close();
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  process.exit(0);
-});
+// 启动连接
+console.log('🎵 网易云音乐 MCP 服务启动...');
+connect();
