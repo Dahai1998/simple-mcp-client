@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
-const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTc2MDM0MywiZW5kcG9pbnRJZCI6ImFnZW50XzE3NjAzNDMiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgwOTM2MTYzLCJleHAiOjE4MTI0OTM3NjN9.eRWQQPDcsv-kYlRdKJJcyPvydgos7QaQbUwey44AdoCXXlFjq3cz0K0hDQKjgBsrpTcya9hQetu_8DdXUbpZnQ';
+const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTc2MDM0MywiZW5kcG9pbnRJZCI6ImFnZW50XzE3NjAzNDMiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgwOTM3ODc4LCJleHAiOjE4MTI0OTU0Nzh9.LvzRwQaR8NrOLWiGkA-U9dplvKpUwXtSJvxaEs5JKlnsrq5STziW7A5drbJlO4RrLlyWnXZ2vdORWtUnZUP8-g';
 
 let ws;
 let reconnectTimer;
@@ -37,7 +37,7 @@ function connect() {
         });
       }
 
-      // 2. 处理工具列表请求 - 只注册 my_search_music 一个工具
+      // 2. 处理工具列表请求
       else if (message.method === 'tools/list') {
         sendResponse({
           id: message.id, jsonrpc: '2.0',
