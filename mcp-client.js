@@ -1,15 +1,13 @@
-// mcp-client.js (v3.1 - 修复Broker拦截)
+// mcp-client.js (兼容 id/songId 最终版)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
-// ================== 配置 ==================
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
 const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMTAxMzE5LCJleHAiOjE4MTI2NTg5MTl9.qcWcYVUA5-Oeg48WfresqJqQ9eF4wAK4bvQMrN_HSHe1JCc1-6l11g4_nqJCzFniJk-CYz5IdT9akiKI_hxWGA';
 
 let ws, reconnectTimer, reconnectAttempts = 0, pingInterval;
 const maxReconnectDelay = 30000;
 
-// ================== 网易云 API ==================
 async function searchMusic(keyword, limit = 5) {
   const res = await fetch(`${NETEASE_API_BASE}/search?keywords=${encodeURIComponent(keyword)}&limit=${limit}&type=1`);
   const data = await res.json();
@@ -29,11 +27,11 @@ async function getSongUrl(songId) {
   return { url: song.url, type: song.type || 'mp3', expire: song.expire || 0 };
 }
 
-// ================== 工具定义 (required 改为空) ==================
+// 工具定义：同时包含 id 和 songId，且 required 为空
 const toolsDef = [
   {
     name: 'my_search_music',
-    description: '搜索网易云音乐真实歌曲，返回结构化的歌曲列表（包含id、名称、歌手）',
+    description: '搜索网易云音乐真实歌曲，返回结构化的歌曲列表',
     inputSchema: {
       type: 'object',
       properties: { keyword: { type: 'string', description: '搜索关键词' } },
@@ -46,14 +44,14 @@ const toolsDef = [
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: '歌曲ID' }
+        id: { type: 'string', description: '歌曲ID' },
+        songId: { type: 'string', description: '歌曲ID (兼容)' }
       },
-      required: []   // ★ 关键修改：不强制，由我们代码自己校验
+      required: []   // 不强制，由我们代码自己校验
     }
   }
 ];
 
-// ================== 连接管理 ==================
 function connect() {
   ws = new WebSocket(MCP_ENDPOINT);
 
@@ -75,7 +73,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '3.1.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '4.0.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -99,9 +97,10 @@ function connect() {
             console.log(`✅ 搜索完成，返回 ${songs.length} 首`);
           }
           else if (toolName === 'play_music') {
-            const songId = args.id;
-            if (!songId) throw new Error('缺少 id 参数');
-            console.log(`🔗 获取播放链接: id=${songId}`);
+            // ★ 兼容 id 或 songId
+            const songId = args.id || args.songId;
+            if (!songId) throw new Error('缺少歌曲ID参数 (需要 id 或 songId)');
+            console.log(`🔗 获取播放链接: songId=${songId}`);
             const songInfo = await getSongUrl(songId);
             send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(songInfo) }] } });
             console.log(`✅ 播放链接已发送: ${songInfo.url.slice(0, 60)}...`);
@@ -131,7 +130,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-// ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP v3.1 (required=[]) 启动');
+console.log('🎵 网易云音乐 MCP v4.0 (兼容 id/songId) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
