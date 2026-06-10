@@ -1,4 +1,4 @@
-// mcp-client.js (v4.1 - 修复播放链接获取，使用 song/url/v1)
+// mcp-client.js (v5.0 - 搜索结果自带播放链接，彻底解决无法调用 play_music 的问题)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -22,19 +22,35 @@ async function searchMusic(keyword, limit = 5) {
 }
 
 async function getSongUrl(songId) {
-  // ★ 关键修复：使用 v1 接口 + level=higher，大幅提高成功率
   const res = await fetch(`${NETEASE_API_BASE}/song/url/v1?id=${songId}&level=higher`);
   const data = await res.json();
   const song = data.data?.[0];
-  if (!song || !song.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
-  return { url: song.url, type: song.type || 'mp3', expire: song.expire || 0 };
+  if (!song || !song.url) return null;
+  return { url: song.url, type: song.type || 'mp3' };
 }
 
-// ================== 工具定义 (兼容 id/songId) ==================
+// 为歌曲列表批量获取播放链接（只取前5首，控制请求量）
+async function enrichSongsWithUrls(songs) {
+  const enriched = [];
+  for (const s of songs) {
+    const urlInfo = await getSongUrl(s.id);
+    enriched.push({
+      id: s.id,
+      name: s.name,
+      artists: s.artists,
+      album: s.album,
+      url: urlInfo ? urlInfo.url : null,
+      type: urlInfo ? urlInfo.type : null
+    });
+  }
+  return enriched;
+}
+
+// ================== 工具定义（仍保留 play_music 备用） ==================
 const toolsDef = [
   {
     name: 'my_search_music',
-    description: '搜索网易云音乐真实歌曲，返回结构化的歌曲列表（包含id、名称、歌手）',
+    description: '搜索网易云音乐真实歌曲，返回结构化的歌曲列表，其中包含每首歌的播放链接(url)',
     inputSchema: {
       type: 'object',
       properties: { keyword: { type: 'string', description: '搜索关键词' } },
@@ -43,14 +59,14 @@ const toolsDef = [
   },
   {
     name: 'play_music',
-    description: '根据歌曲ID获取可播放的音乐链接',
+    description: '根据歌曲ID获取可播放的音乐链接（备用）',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: '歌曲ID' },
         songId: { type: 'string', description: '歌曲ID (兼容)' }
       },
-      required: []   // 由我们自己的代码做校验
+      required: []
     }
   }
 ];
@@ -77,7 +93,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '4.1.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '5.0.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -95,19 +111,30 @@ function connect() {
               send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `没有找到与"${keyword}"相关的歌曲` }] } });
               return;
             }
-            const songListText = songs.map((s, i) => `${i+1}. ${s.name} - ${s.artists} (id:${s.id})`).join('\n');
-            const result = { text: `搜索"${keyword}"的结果：\n${songListText}\n\n可以说“播放第X首”来选择。`, songs };
+
+            // 获取播放链接并附加到结果中
+            console.log(`🔗 正在为 ${songs.length} 首歌曲获取播放链接...`);
+            const enrichedSongs = await enrichSongsWithUrls(songs);
+            const songListText = enrichedSongs.map((s, i) => {
+              const hasUrl = s.url ? '可播放' : '无链接';
+              return `${i+1}. ${s.name} - ${s.artists} (id:${s.id}) [${hasUrl}]`;
+            }).join('\n');
+
+            const result = {
+              text: `搜索"${keyword}"的结果：\n${songListText}\n\n可以直接播放有“可播放”标记的歌曲。`,
+              songs: enrichedSongs
+            };
             send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result) }] } });
-            console.log(`✅ 搜索完成，返回 ${songs.length} 首`);
+            console.log(`✅ 搜索完成，已附带播放链接`);
           }
           else if (toolName === 'play_music') {
-            // 兼容 id 或 songId
             const songId = args.id || args.songId;
             if (!songId) throw new Error('缺少歌曲ID参数 (需要 id 或 songId)');
             console.log(`🔗 获取播放链接: songId=${songId}`);
-            const songInfo = await getSongUrl(songId);
-            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(songInfo) }] } });
-            console.log(`✅ 播放链接已发送: ${songInfo.url.slice(0, 60)}...`);
+            const urlInfo = await getSongUrl(songId);
+            if (!urlInfo) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
+            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(urlInfo) }] } });
+            console.log(`✅ 播放链接已发送: ${urlInfo.url.slice(0, 60)}...`);
           }
           else { throw new Error(`未知工具: ${toolName}`); }
         } catch (err) {
@@ -135,6 +162,6 @@ function scheduleReconnect() {
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
 // ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP v4.1 (使用 song/url/v1) 启动');
+console.log('🎵 网易云音乐 MCP v5.0 (搜索结果自带播放链接) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
