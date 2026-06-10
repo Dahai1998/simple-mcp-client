@@ -1,4 +1,4 @@
-// mcp-client.js (参数 id 最终版)
+// mcp-client.js (v3.1 - 修复Broker拦截)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -29,7 +29,7 @@ async function getSongUrl(songId) {
   return { url: song.url, type: song.type || 'mp3', expire: song.expire || 0 };
 }
 
-// ================== 工具定义（参数名 id） ==================
+// ================== 工具定义 (required 改为空) ==================
 const toolsDef = [
   {
     name: 'my_search_music',
@@ -45,8 +45,10 @@ const toolsDef = [
     description: '根据歌曲ID获取可播放的音乐链接',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string', description: '歌曲ID' } },
-      required: ['id']   // 与 Broker 校验一致
+      properties: {
+        id: { type: 'string', description: '歌曲ID' }
+      },
+      required: []   // ★ 关键修改：不强制，由我们代码自己校验
     }
   }
 ];
@@ -73,7 +75,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '3.0.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '3.1.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -97,7 +99,7 @@ function connect() {
             console.log(`✅ 搜索完成，返回 ${songs.length} 首`);
           }
           else if (toolName === 'play_music') {
-            const songId = args.id;   // 使用 id
+            const songId = args.id;
             if (!songId) throw new Error('缺少 id 参数');
             console.log(`🔗 获取播放链接: id=${songId}`);
             const songInfo = await getSongUrl(songId);
@@ -130,6 +132,6 @@ function scheduleReconnect() {
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
 // ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP v3.0 (参数id) 启动');
+console.log('🎵 网易云音乐 MCP v3.1 (required=[]) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
