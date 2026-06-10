@@ -1,15 +1,13 @@
-// mcp-client.js (v5.1 - 工具改名为 my_play_music，绕过 Broker 拦截)
+// mcp-client.js (v5.2 - 返回纯 URL，修复设备不播放)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
-// ================== 配置 ==================
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
 const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMTAxMzE5LCJleHAiOjE4MTI2NTg5MTl9.qcWcYVUA5-Oeg48WfresqJqQ9eF4wAK4bvQMrN_HSHe1JCc1-6l11g4_nqJCzFniJk-CYz5IdT9akiKI_hxWGA';
 
 let ws, reconnectTimer, reconnectAttempts = 0, pingInterval;
 const maxReconnectDelay = 30000;
 
-// ================== 网易云 API 封装 ==================
 async function searchMusic(keyword, limit = 5) {
   const res = await fetch(`${NETEASE_API_BASE}/search?keywords=${encodeURIComponent(keyword)}&limit=${limit}&type=1`);
   const data = await res.json();
@@ -29,7 +27,6 @@ async function getSongUrl(songId) {
   return { url: song.url, type: song.type || 'mp3' };
 }
 
-// ================== 工具定义 (play_music → my_play_music) ==================
 const toolsDef = [
   {
     name: 'my_search_music',
@@ -41,8 +38,8 @@ const toolsDef = [
     }
   },
   {
-    name: 'my_play_music',   // ★ 名字改为 my_play_music
-    description: '根据歌曲ID获取可播放的音乐链接',
+    name: 'my_play_music',
+    description: '根据歌曲ID获取可播放的音乐链接，返回纯文本URL',
     inputSchema: {
       type: 'object',
       properties: {
@@ -54,7 +51,6 @@ const toolsDef = [
   }
 ];
 
-// ================== 连接管理 ==================
 function connect() {
   ws = new WebSocket(MCP_ENDPOINT);
 
@@ -76,7 +72,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '5.1.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '5.2.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -99,14 +95,18 @@ function connect() {
             send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result) }] } });
             console.log(`✅ 搜索完成，返回 ${songs.length} 首`);
           }
-          else if (toolName === 'my_play_music') {   // ★ 处理新工具
+          else if (toolName === 'my_play_music') {
             const songId = args.id || args.songId;
             if (!songId) throw new Error('缺少歌曲ID参数 (需要 id 或 songId)');
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const urlInfo = await getSongUrl(songId);
-            if (!urlInfo) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
-            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(urlInfo) }] } });
-            console.log(`✅ 播放链接已发送: ${urlInfo.url.slice(0, 60)}...`);
+            if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
+            // ★ 返回纯文本 URL
+            let playUrl = urlInfo.url;
+            // 尝试替换为 https（如果设备需要）
+            // playUrl = playUrl.replace('http://', 'https://');
+            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: playUrl }] } });
+            console.log(`✅ 播放链接已发送: ${playUrl.slice(0, 60)}...`);
           }
           else { throw new Error(`未知工具: ${toolName}`); }
         } catch (err) {
@@ -133,7 +133,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-// ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP v5.1 (工具改名 my_play_music) 启动');
+console.log('🎵 网易云音乐 MCP v5.2 (返回纯URL) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
