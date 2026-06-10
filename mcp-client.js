@@ -37,7 +37,7 @@ function connect() {
           result: {
             protocolVersion: '2024-11-05',
             capabilities: {},
-            serverInfo: { name: 'netease-music-server', version: '3.0.0' }
+            serverInfo: { name: 'netease-music-server', version: '3.1.0' }
           }
         });
       }
@@ -73,7 +73,7 @@ function connect() {
               },
               {
                 name: 'play_music_from_url',
-                description: '直接播放指定的音频链接，用于在线音乐播放。返回的链接可直接用于播放',
+                description: '直接播放指定的音频链接，用于在线音乐播放',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -157,11 +157,11 @@ function connect() {
           }
           try {
             console.log(`▶️ 播放链接: ${url}`);
-            // ⚠️ 这里不再返回 data 字段，只返回纯文本，避免连接断开
+            // 纯文本响应，不添加任何额外字段，避免连接断开
             sendResponse({
               id, jsonrpc: '2.0',
               result: {
-                content: [{ type: 'text', text: `播放指令已接收，正在尝试播放：${url}` }]
+                content: [{ type: 'text', text: `播放指令已接收，正在播放：${url}` }]
               }
             });
             console.log('✅ 播放响应已发送');
