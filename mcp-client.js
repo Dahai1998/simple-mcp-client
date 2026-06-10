@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
 // 请务必替换成你从小智后台最新获取的Token！
-const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMDk1MTUzLCJleHAiOjE4MTI2NTI3NTN9.eTsb5B04Q1k0vvgIOQ7U-yNovA_nnFfPjAWSScuzRWBucwjObhQXlyKpaTGFmPOhQ0mCjY7K4QDWPUnCGpLNdw';
+const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMDk1MzIzLCJleHAiOjE4MTI2NTI5MjN9._5CxzJELIUMTH9UnUvES12oC0RZVJKZ7lpZvgbQmCMYCocMEou3kdmrBYazk4ATFeUuz4ILPWQ6seeNRsTHh8w';
 
 let ws;
 let reconnectTimer;
