@@ -1,4 +1,4 @@
-// mcp-client.js (最终稳定版)
+// mcp-client.js (播放功能修复版)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -10,7 +10,7 @@ const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cC
 let ws;
 let reconnectTimer;
 let reconnectAttempts = 0;
-const maxReconnectDelay = 30000;
+const maxReconnectDelay = 30000; // 最大重连间隔 30 秒
 let pingInterval;
 
 // ================== 网易云 API 封装 ==================
@@ -57,9 +57,9 @@ const toolsDef = [
     inputSchema: {
       type: 'object',
       properties: {
-        songId: { type: 'string', description: '歌曲ID（兼容id/songId/musicId）' }
+        songId: { type: 'string', description: '歌曲ID，由搜索接口返回' }
       },
-      required: [] // 不设置必填，由代码内部兼容多个参数名
+      required: ['songId']
     }
   }
 ];
@@ -92,7 +92,7 @@ function connect() {
           result: {
             protocolVersion: '2024-11-05',
             capabilities: { tools: {} },
-            serverInfo: { name: 'netease-music-server', version: '2.1.0' }
+            serverInfo: { name: 'netease-music-server', version: '2.2.0' }
           }
         });
       }
@@ -112,7 +112,6 @@ function connect() {
               send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `没有找到与"${keyword}"相关的歌曲` }] } });
               return;
             }
-            // 返回同时包含可读文本和结构化数据的 JSON
             const songListText = songs.map((s, i) => `${i+1}. ${s.name} - ${s.artists} (id:${s.id})`).join('\n');
             const result = {
               text: `搜索"${keyword}"的结果：\n${songListText}\n\n可以说“播放第X首”来选择。`,
@@ -122,11 +121,11 @@ function connect() {
             console.log(`✅ 搜索完成，返回 ${songs.length} 首`);
           }
           else if (toolName === 'play_music') {
-            // ★ 核心修复：兼容 AI 可能传递的任何参数名
-            const songId = args.id || args.songId || args.musicId || args.song_id;
+            // 使用 songId，与工具定义一致
+            const songId = args.songId;
             if (!songId) {
-              console.error('❌ 缺少歌曲ID，收到的参数:', args);
-              throw new Error('缺少歌曲ID参数（请提供 id 或 songId）');
+              console.error('❌ 缺少 songId，收到的参数:', args);
+              throw new Error('缺少 songId 参数');
             }
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const songInfo = await getSongUrl(songId);
@@ -183,7 +182,7 @@ function send(data) {
 }
 
 // ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP 客户端 v2.1 启动');
+console.log('🎵 网易云音乐 MCP 客户端 v2.2 启动');
 console.log('  → 网易云 API:', NETEASE_API_BASE);
 console.log('  → MCP Broker:', MCP_ENDPOINT.split('?')[0]);
 connect();
