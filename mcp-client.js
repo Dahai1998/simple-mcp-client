@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
-const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMDkyOTUxLCJleHAiOjE4MTI2NTA1NTF9.nTldZQTNREWN1yfKFGDSdHMUma-NU3aKPSyFocxowFbMBsbC8xpC8LzeEioSv1ML_YqOAvsQNKOt8SxJLGu3fg';
+const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMDk0NTQ0LCJleHAiOjE4MTI2NTIxNDR9.GdpUotSHYsfTcPnRwCsnOQRLftM8VZKhyif49byjW00iu8Ci9ItVePv2adZwesvEzx2Iv_-HxF3UqyhQQZd7ZA';
 
 let ws;
 let reconnectTimer;
