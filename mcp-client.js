@@ -1,15 +1,13 @@
-// mcp-client.js (v6.1 - 优先 my_play_music，兼容 play_music)
+// mcp-client.js (v6.1 - 最终稳定版)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
-// ================== 配置 ==================
 const NETEASE_API_BASE = 'https://netease-cloud-music-api-production.up.railway.app';
 const MCP_ENDPOINT = 'wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjkxMTg5NiwiYWdlbnRJZCI6MTg1MjQ4MCwiZW5kcG9pbnRJZCI6ImFnZW50XzE4NTI0ODAiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgxMTAxMzE5LCJleHAiOjE4MTI2NTg5MTl9.qcWcYVUA5-Oeg48WfresqJqQ9eF4wAK4bvQMrN_HSHe1JCc1-6l11g4_nqJCzFniJk-CYz5IdT9akiKI_hxWGA';
 
 let ws, reconnectTimer, reconnectAttempts = 0, pingInterval;
 const maxReconnectDelay = 30000;
 
-// ================== 网易云 API 封装 ==================
 async function searchMusic(keyword, limit = 5) {
   const res = await fetch(`${NETEASE_API_BASE}/search?keywords=${encodeURIComponent(keyword)}&limit=${limit}&type=1`);
   const data = await res.json();
@@ -29,7 +27,6 @@ async function getSongUrl(songId) {
   return { url: song.url, type: song.type || 'mp3' };
 }
 
-// ================== 工具定义（优先 my_play_music） ==================
 const toolsDef = [
   {
     name: 'my_search_music',
@@ -41,7 +38,7 @@ const toolsDef = [
     }
   },
   {
-    name: 'my_play_music',   // 优先使用这个
+    name: 'my_play_music',
     description: '根据歌曲ID获取可播放的音乐链接，返回纯文本URL',
     inputSchema: {
       type: 'object',
@@ -53,7 +50,7 @@ const toolsDef = [
     }
   },
   {
-    name: 'play_music',   // 保留备用
+    name: 'play_music',
     description: '根据歌曲ID获取可播放的音乐链接（备用）',
     inputSchema: {
       type: 'object',
@@ -66,7 +63,6 @@ const toolsDef = [
   }
 ];
 
-// ================== 连接管理 ==================
 function connect() {
   ws = new WebSocket(MCP_ENDPOINT);
 
@@ -118,8 +114,6 @@ function connect() {
             const urlInfo = await getSongUrl(songId);
             if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
             let playUrl = urlInfo.url;
-            // 如果设备需要 https 可取消下面这行的注释
-            // playUrl = playUrl.replace('http://', 'https://');
             send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: playUrl }] } });
             console.log(`✅ 播放链接已发送: ${playUrl.slice(0, 60)}...`);
           }
@@ -148,7 +142,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-// ================== 启动 ==================
-console.log('🎵 网易云音乐 MCP v6.1 (优先 my_play_music) 启动');
+console.log('🎵 网易云音乐 MCP v6.1 (最终版) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
