@@ -1,4 +1,4 @@
-// mcp-client.js (v6.2 - 带 __PLAY__ 标记，配合固件自动播放)
+// mcp-client.js (v7.0 - 让AI调用设备端 self.music.play_song 播放)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -37,9 +37,22 @@ const toolsDef = [
       required: ['keyword']
     }
   },
+  // ★ 关键新增：把设备本地的 self.music.play_song 工具注册到云端工具列表
+  {
+    name: 'self.music.play_song',
+    description: '播放指定的歌曲（可以是歌曲名或直接的播放链接）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        song_name: { type: 'string', description: '歌曲名称或完整的播放链接' },
+        artist_name: { type: 'string', description: '艺术家名称（可选，默认为空）' }
+      },
+      required: ['song_name']
+    }
+  },
   {
     name: 'my_play_music',
-    description: '根据歌曲ID获取可播放的音乐链接，返回纯文本URL（带播放标记）',
+    description: '根据歌曲ID获取可播放的音乐链接，并返回播放指令',
     inputSchema: {
       type: 'object',
       properties: {
@@ -51,7 +64,7 @@ const toolsDef = [
   },
   {
     name: 'play_music',
-    description: '根据歌曲ID获取可播放的音乐链接（备用，带播放标记）',
+    description: '根据歌曲ID获取可播放的音乐链接（备用）',
     inputSchema: {
       type: 'object',
       properties: {
@@ -65,7 +78,6 @@ const toolsDef = [
 
 function connect() {
   ws = new WebSocket(MCP_ENDPOINT);
-
   ws.on('open', () => {
     console.log('✅ 已连接到小智 MCP Broker');
     reconnectAttempts = 0;
@@ -84,7 +96,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '6.2.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.0.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -113,10 +125,14 @@ function connect() {
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const urlInfo = await getSongUrl(songId);
             if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
-            let playUrl = urlInfo.url;
-            // ★ 加上 __PLAY__ 前缀，固件会识别并自动播放
-            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `__PLAY__${playUrl}` }] } });
-            console.log(`✅ 播放链接已发送（带标记）: ${playUrl.slice(0, 60)}...`);
+            // ★ 返回时明确告诉 AI：请立即调用 self.music.play_song 播放这个链接
+            const playCmd = {
+              message: "请立即使用 self.music.play_song 工具播放此链接",
+              song_name: urlInfo.url,
+              artist_name: ""
+            };
+            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(playCmd) }] } });
+            console.log(`✅ 播放指令已发送: ${urlInfo.url.slice(0, 60)}...`);
           }
           else { throw new Error(`未知工具: ${toolName}`); }
         } catch (err) {
@@ -143,6 +159,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-console.log('🎵 网易云音乐 MCP v6.2 (带 __PLAY__ 标记) 启动');
+console.log('🎵 网易云音乐 MCP v7.0 (调用设备 self.music.play_song) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
