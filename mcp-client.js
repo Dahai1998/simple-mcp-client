@@ -1,4 +1,4 @@
-// mcp-client.js (v7.1 - 修复 self.music.play_song 注册)
+// mcp-client.js (v7.2 - 移除 self.music.play_song，让设备直接处理)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -27,7 +27,7 @@ async function getSongUrl(songId) {
   return { url: song.url, type: song.type || 'mp3' };
 }
 
-// ★ 工具列表：必须包含 self.music.play_song
+// 不再注册 self.music.play_song
 const toolsDef = [
   {
     name: 'my_search_music',
@@ -36,18 +36,6 @@ const toolsDef = [
       type: 'object',
       properties: { keyword: { type: 'string', description: '搜索关键词' } },
       required: ['keyword']
-    }
-  },
-  {
-    name: 'self.music.play_song',
-    description: '播放指定的歌曲（可以是歌曲名或完整的播放链接）',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        song_name: { type: 'string', description: '歌曲名称或完整的播放链接' },
-        artist_name: { type: 'string', description: '艺术家名称（可选，默认为空）' }
-      },
-      required: ['song_name']
     }
   },
   {
@@ -96,7 +84,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.1.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.2.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -125,19 +113,14 @@ function connect() {
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const urlInfo = await getSongUrl(songId);
             if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
-            // ★ 返回时明确告诉 AI 调用 self.music.play_song
+            // 返回给 AI，让它调用设备端的 self.music.play_song
             const playCmd = {
-              message: "请立即使用 self.music.play_song 工具播放此链接",
+              message: "请立即使用 self.music.play_song 工具播放此链接，该工具在设备本地执行",
               song_name: urlInfo.url,
               artist_name: ""
             };
             send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(playCmd) }] } });
             console.log(`✅ 播放指令已发送: ${urlInfo.url.slice(0, 60)}...`);
-          }
-          else if (toolName === 'self.music.play_song') {
-            // 这个工具实际上由设备执行，云端只需要确认收到调用即可
-            // 但为了完整，可以返回成功
-            send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: '{"success":true,"message":"设备正在处理播放请求"}' }] } });
           }
           else { throw new Error(`未知工具: ${toolName}`); }
         } catch (err) {
@@ -164,6 +147,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-console.log('🎵 网易云音乐 MCP v7.1 (修复 self.music.play_song) 启动');
+console.log('🎵 网易云音乐 MCP v7.2 (设备直调 self.music.play_song) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
