@@ -1,4 +1,4 @@
-// mcp-client.js (v7.3 - 适配 meting API 直接返回 MP3 的情况)
+// mcp-client.js (v7.4 - 增强网易云 API, 强制返回 HTTP 链接)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -19,22 +19,47 @@ async function searchMusic(keyword, limit = 5) {
   }));
 }
 
-// ★ 修改点：适配 meting API 直接返回 MP3 的情况
+// ★ 增强版 getSongUrl，优先返回 http 链接
 async function getSongUrl(songId) {
-  const apiUrl = `https://api.injahow.cn/meting/?type=url&id=${songId}`;
-  console.log(`请求播放链接: ${apiUrl}`);
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Referer': 'https://music.163.com/'
+  };
+
+  // 1. 尝试 v1 接口，标准音质（更容易返回 http）
   try {
-    const res = await fetch(apiUrl);
-    const data = await res.json();
-    if (data && data.url) {
-      return { url: data.url, type: 'mp3' };
+    let res = await fetch(`${NETEASE_API_BASE}/song/url/v1?id=${songId}&level=standard`, { headers });
+    let data = await res.json();
+    let song = data.data?.[0];
+    if (song && song.url && song.url.startsWith('http://')) {
+      console.log(`✅ 获得 http 链接(v1): ${song.url.slice(0, 60)}...`);
+      return { url: song.url, type: song.type || 'mp3' };
     }
-  } catch (e) {
-    // JSON 解析失败，说明 API 直接返回了 MP3 数据，此时把 API 地址本身作为播放链接
-    console.log('API 返回非 JSON，将直接使用查询地址作为播放链接');
-  }
-  // 返回 API 查询地址，让设备直接下载
-  return { url: apiUrl, type: 'mp3' };
+  } catch(e) { console.log('v1 请求失败', e.message); }
+
+  // 2. 尝试旧接口 /song/url
+  try {
+    let res = await fetch(`${NETEASE_API_BASE}/song/url?id=${songId}`, { headers });
+    let data = await res.json();
+    let song = data.data?.[0];
+    if (song && song.url && song.url.startsWith('http://')) {
+      console.log(`✅ 获得 http 链接(old): ${song.url.slice(0, 60)}...`);
+      return { url: song.url, type: song.type || 'mp3' };
+    }
+  } catch(e) { console.log('old 接口失败', e.message); }
+
+  // 3. 备用 meting API，并强制替换为 http
+  try {
+    let res = await fetch(`https://api.injahow.cn/meting/?type=url&id=${songId}`);
+    let data = await res.json();
+    if (data && data.url) {
+      let url = data.url.replace(/^https:/, 'http:');
+      console.log(`✅ 获得 meting 链接: ${url.slice(0, 60)}...`);
+      return { url, type: 'mp3' };
+    }
+  } catch(e) { console.log('meting API 失败', e.message); }
+
+  return null;
 }
 
 const toolsDef = [
@@ -93,7 +118,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.3.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.4.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -121,7 +146,7 @@ function connect() {
             if (!songId) throw new Error('缺少歌曲ID参数 (需要 id 或 songId)');
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const urlInfo = await getSongUrl(songId);
-            if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接');
+            if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
             const playCmd = {
               message: "请立即使用 self.music.play_song 工具播放此链接，该工具在设备本地执行",
               song_name: urlInfo.url,
@@ -155,6 +180,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-console.log('🎵 网易云音乐 MCP v7.3 (适配 meting API) 启动');
+console.log('🎵 网易云音乐 MCP v7.4 (增强版) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
