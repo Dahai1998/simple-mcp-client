@@ -1,4 +1,4 @@
-// mcp-client.js (v7.2 - 更换播放链接获取 API)
+// mcp-client.js (v7.3 - 适配 meting API 直接返回 MP3 的情况)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -19,20 +19,24 @@ async function searchMusic(keyword, limit = 5) {
   }));
 }
 
-// ★ 更换为 meting 公开 API，无需 Cookie，返回可播放链接
+// ★ 修改点：适配 meting API 直接返回 MP3 的情况
 async function getSongUrl(songId) {
-  // 使用 meting API 获取播放链接，该 API 通常可直接返回 MP3 链接
   const apiUrl = `https://api.injahow.cn/meting/?type=url&id=${songId}`;
   console.log(`请求播放链接: ${apiUrl}`);
-  const res = await fetch(apiUrl);
-  const data = await res.json();
-  if (data && data.url) {
-    return { url: data.url, type: 'mp3' };
+  try {
+    const res = await fetch(apiUrl);
+    const data = await res.json();
+    if (data && data.url) {
+      return { url: data.url, type: 'mp3' };
+    }
+  } catch (e) {
+    // JSON 解析失败，说明 API 直接返回了 MP3 数据，此时把 API 地址本身作为播放链接
+    console.log('API 返回非 JSON，将直接使用查询地址作为播放链接');
   }
-  return null;
+  // 返回 API 查询地址，让设备直接下载
+  return { url: apiUrl, type: 'mp3' };
 }
 
-// 不再注册 self.music.play_song
 const toolsDef = [
   {
     name: 'my_search_music',
@@ -89,7 +93,7 @@ function connect() {
       console.log(`📩 ${method || 'response'}`, JSON.stringify(msg).slice(0, 200));
 
       if (method === 'initialize') {
-        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.2.0' } } });
+        send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'netease-music-server', version: '7.3.0' } } });
       }
       else if (method === 'tools/list') {
         send({ jsonrpc: '2.0', id, result: { tools: toolsDef } });
@@ -117,8 +121,7 @@ function connect() {
             if (!songId) throw new Error('缺少歌曲ID参数 (需要 id 或 songId)');
             console.log(`🔗 获取播放链接: songId=${songId}`);
             const urlInfo = await getSongUrl(songId);
-            if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接，该歌曲可能需要付费或已下架');
-            // 返回给 AI，让它调用设备端的 self.music.play_song
+            if (!urlInfo || !urlInfo.url) throw new Error('无法获取播放链接');
             const playCmd = {
               message: "请立即使用 self.music.play_song 工具播放此链接，该工具在设备本地执行",
               song_name: urlInfo.url,
@@ -152,6 +155,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-console.log('🎵 网易云音乐 MCP v7.2 (使用 meting API) 启动');
+console.log('🎵 网易云音乐 MCP v7.3 (适配 meting API) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
