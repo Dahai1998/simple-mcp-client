@@ -1,4 +1,4 @@
-// mcp-client.js (v7.2 - 移除 self.music.play_song，让设备直接处理)
+// mcp-client.js (v7.2 - 更换播放链接获取 API)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
@@ -19,12 +19,17 @@ async function searchMusic(keyword, limit = 5) {
   }));
 }
 
+// ★ 更换为 meting 公开 API，无需 Cookie，返回可播放链接
 async function getSongUrl(songId) {
-  const res = await fetch(`${NETEASE_API_BASE}/song/url/v1?id=${songId}&level=higher`);
+  // 使用 meting API 获取播放链接，该 API 通常可直接返回 MP3 链接
+  const apiUrl = `https://api.injahow.cn/meting/?type=url&id=${songId}`;
+  console.log(`请求播放链接: ${apiUrl}`);
+  const res = await fetch(apiUrl);
   const data = await res.json();
-  const song = data.data?.[0];
-  if (!song || !song.url) return null;
-  return { url: song.url, type: song.type || 'mp3' };
+  if (data && data.url) {
+    return { url: data.url, type: 'mp3' };
+  }
+  return null;
 }
 
 // 不再注册 self.music.play_song
@@ -147,6 +152,6 @@ function scheduleReconnect() {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
-console.log('🎵 网易云音乐 MCP v7.2 (设备直调 self.music.play_song) 启动');
+console.log('🎵 网易云音乐 MCP v7.2 (使用 meting API) 启动');
 connect();
 process.on('SIGTERM', () => { clearInterval(pingInterval); if (ws) ws.close(); process.exit(0); });
