@@ -1,3 +1,4 @@
+
 // mcp-client.js (v7.4 - 增强网易云 API, 强制返回 HTTP 链接)
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
@@ -84,18 +85,6 @@ const toolsDef = [
       required: []
     }
   },
-  {
-    name: 'play_music',
-    description: '根据歌曲ID获取可播放的音乐链接（备用）',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: '歌曲ID' },
-        songId: { type: 'string', description: '歌曲ID (兼容)' }
-      },
-      required: []
-    }
-  }
 ];
 
 function connect() {
